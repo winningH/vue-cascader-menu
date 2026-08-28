@@ -1,0 +1,41 @@
+{
+  "name": "vue-cascader-menu",
+  "version": "1.0.1",
+  "description": "Vue 2 多级级联下拉菜单组件，支持异步加载与多实例互斥",
+  "type": "module",
+  "main": "./dist/vue-cascader-menu.umd.cjs",
+  "module": "./dist/vue-cascader-menu.js",
+  "exports": {
+    ".": {
+      "import": "./dist/vue-cascader-menu.js",
+      "require": "./dist/vue-cascader-menu.umd.cjs"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "keywords": [
+    "vue",
+    "vue2",
+    "dropdown",
+    "cascader",
+    "menu"
+  ],
+  "license": "MIT",
+  "peerDependencies": {
+    "vue": "^2.6.14"
+  },
+  "devDependencies": {
+    "vue": "2.7.10",
+    "vite": "^5.4.0",
+    "@vitejs/plugin-vue2": "^2.3.1"
+  },
+  "scripts": {
+    "build": "vite build",
+    "prepublishOnly": "npm run build"
+  }
+}
