@@ -4,17 +4,23 @@
       <span class="dm-trigger-text">{{ title }}</span>
       <span class="dm-trigger-arrow" :class="{ up: visible }">▾</span>
     </button>
-    <div v-show="visible" class="dm-panel">
+    <div v-show="visible" class="dm-panel" :style="{ '--maxHeight': maxHeight + 'px' }">
       <drop-menu-item
         v-for="item in data"
         :key="item.value"
         :item="item"
         :level="0"
         :path="[]"
-        :is-active="activeChild === item.value"
+        :expanded-path="expandedPath"
         @select="onSelect"
-        @child-expand="onChildExpand"
-      />
+        @expand="onExpand"
+      >
+        <template #label="slotProps">
+          <slot name="label" v-bind="slotProps">
+            {{ slotProps.item.label }}
+          </slot>
+        </template>
+      </drop-menu-item>
     </div>
   </div>
 </template>
@@ -30,13 +36,15 @@
     directives: { clickoutside },
     props: {
       title: { type: String, required: true },
-      data: { type: Array, required: true }
+      data: { type: Array, required: true },
+      maxHeight: { type: Number, default: 300 }
     },
     data() {
       return {
         visible: false,
-        // 顶层激活的子项 value（null 表示无子项展开）。子项 emit child-expand 通知更新
-        activeChild: null
+        // 当前展开路径：从顶层到展开节点的原节点对象引用数组（[] 表示全部收起）
+        // 唯一的展开状态源，子项根据它纯计算出自身 isActive；点击时子项上抛 { item, level }，这里统一 toggle
+        expandedPath: []
       }
     },
     methods: {
@@ -49,17 +57,21 @@
       },
       close() {
         this.visible = false
-        // 清顶层 active + 递归重置所有子项的 activeChild/loading
-        this.activeChild = null
-        this.$children.forEach((c) => {
-          if (c.$options.name === 'DropMenuItem' && typeof c.resetAll === 'function') {
-            c.resetAll()
-          }
-        })
+        // 清空展开路径即可，子项的 isActive 随之变 false，无需逐个通知子组件
+        this.expandedPath = []
       },
-      // 子项 child-expand：激活/取消激活顶层的 activeChild（再次点同项 → 收起）
-      onChildExpand(value) {
-        this.activeChild = this.activeChild === value ? null : value
+      // 子项 expand：item 为被点节点的原引用，level 为其层级
+      // 已展开（expandedPath[level] === item）：已加载的切换收起（保留祖先展开）；
+      //   未加载是异步重试场景，保持展开不动
+      // 未展开：截取前 level 项后接上 item —— 深层旧状态自然丢弃，同层兄弟自然互斥
+      onExpand({ item, level }) {
+        if (this.expandedPath[level] === item) {
+          if (item.children && item.children.length) {
+            this.expandedPath = this.expandedPath.slice(0, level)
+          }
+        } else {
+          this.expandedPath = [...this.expandedPath.slice(0, level), item]
+        }
       },
       // payload = {...item, path: [祖宗...自身]}
       // 叶子（hasChildren===false）→ emit select + 关闭整个下拉
@@ -121,7 +133,7 @@
     left: 0;
     top: calc(100% + 4px);
     min-width: 160px;
-    max-height: 300px;
+    max-height: var(--maxHeight, 300px);
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-gutter: auto;

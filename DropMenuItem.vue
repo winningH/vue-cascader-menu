@@ -6,7 +6,11 @@
       :class="{ disabled: item.disabled, active: isActive }"
       @click="handleClick"
     >
-      <span class="dm-label">{{ item.label }}</span>
+      <span class="dm-label">
+        <slot name="label" :item="item" :level="level" :path="[...path, item]">
+          {{ item.label }}
+        </slot>
+      </span>
       <LoadingIcon v-if="loading" class="dm-spin" />
       <span v-else-if="item.hasChildren" class="dm-arrow">▸</span>
     </div>
@@ -21,10 +25,16 @@
         :item="c"
         :level="level + 1"
         :path="[...path, item]"
-        :is-active="activeChild === c.value"
+        :expanded-path="expandedPath"
         @select="$emit('select', $event)"
-        @child-expand="onChildExpand"
-      />
+        @expand="$emit('expand', $event)"
+      >
+        <template #label="slotProps">
+          <slot name="label" v-bind="slotProps">
+            {{ slotProps.item.label }}
+          </slot>
+        </template>
+      </drop-menu-item>
     </div>
   </div>
 </template>
@@ -40,20 +50,27 @@
       level: { type: Number, default: 0 },
       // 祖宗路径：从顶层到父节点的对象数组，顶层传 []
       path: { type: Array, default: () => [] },
-      // 是否是本层（作为父项时）当前激活的子项——父项传 :is-active="activeChild === c.value"
-      isActive: { type: Boolean, default: false }
+      // 当前展开路径（原节点对象引用数组），由 DropMenu 持有、逐层透传
+      expandedPath: { type: Array, default: () => [] }
     },
     data() {
       return {
-        // 本层作为父项时，当前激活的子项 value（null 表示无子项展开）
-        activeChild: null,
-        loading: false,
         // .dm-sub 用 fixed 定位，left/top 由 JS 根据 .dm-item 的 rect 计算
         subLeft: 0,
         subTop: 0
       }
     },
     computed: {
+      // 同一节点对象在树中只出现一次，引用相等即精确匹配，无需 value 比较和祖先链校验
+      isActive() {
+        return this.expandedPath[this.level] === this.item
+      },
+      // loading 是 item 的属性，由外部维护：组件只读不写（遵循单向数据流）
+      // 外部 onSelect 收到 select 后设 item.loading=true；成功塞 children 时设 false；失败设 false
+      // 组件 computed 响应 item.loading 变化，UI 自动切换转圈/箭头
+      loading() {
+        return this.item.loading === true
+      },
       subStyle() {
         return {
           left: this.subLeft + 'px',
@@ -62,24 +79,18 @@
       }
     },
     watch: {
-      // 被父项激活时（isActive 从 false→true）重算 fixed 坐标
-      // 失去激活时清空本层 activeChild：子项的 isActive 会随之变 false，
-      // 逐层触发各自的 watcher 级联清空后代的展开状态
-      // （否则切走再切回时，后代残留的 activeChild 会让深层子面板一并恢复展开）
+      // 被激活时（isActive 从 false→true）重算 fixed 坐标
+      // 失活无需任何清理：展开状态由根的 expandedPath 单点持有，收起/切换时自然覆盖
       isActive(v) {
-        if (v) {
-          if (this.item.children && this.item.children.length) {
-            this.$nextTick(this.updateSubPos)
-          }
-        } else if (this.activeChild !== null) {
-          this.activeChild = null
+        if (v && this.item.children && this.item.children.length) {
+          this.$nextTick(this.updateSubPos)
         }
       },
-      // 异步加载完成（children 从空变非空）→ 复位 loading，若当前激活重算坐标
+      // 异步加载完成（children 从空变非空）→ 若当前激活重算坐标
+      // loading 复位由外部控制（外部塞 children 时自己设 item.loading=false）
       'item.children'(v) {
-        if (v && v.length) {
-          this.loading = false
-          if (this.isActive) this.$nextTick(this.updateSubPos)
+        if (v && v.length && this.isActive) {
+          this.$nextTick(this.updateSubPos)
         }
       }
     },
@@ -115,32 +126,16 @@
         const loaded =
           this.item.children && this.item.children.length > 0
 
-        // 待异步加载：通知父项激活自己（让同层兄弟收起）+ emit select 让外部塞 children
+        // 待异步加载：emit select 让外部塞 children 并由外部设 item.loading=true（单向数据流）
         if (!loaded) {
-          if (this.loading) return
-          this.loading = true
-          this.$emit('child-expand', this.item.value)
+          if (this.loading) return // 防首次连点高频触发（重试场景外部已设 loading=true）
+          this.$emit('expand', { item: this.item, level: this.level })
           this.$emit('select', payload)
           return
         }
 
-        // 已加载：通知父项激活/取消激活（再次点同项会取消）
-        this.$emit('child-expand', this.item.value)
-      },
-      // 子项 child-expand：激活/取消激活本层的 activeChild
-      // 再次点同项 → 清掉（实现收起）
-      onChildExpand(value) {
-        this.activeChild = this.activeChild === value ? null : value
-      },
-      // 关闭整个面板时由 DropMenu.close() 递归调用，重置所有子项的 activeChild/loading
-      resetAll() {
-        this.activeChild = null
-        this.loading = false
-        this.$children.forEach((c) => {
-          if (c.$options.name === 'DropMenuItem' && typeof c.resetAll === 'function') {
-            c.resetAll()
-          }
-        })
+        // 已加载/待加载统一上抛，是否切换收起由 DropMenu 依据当前 expandedPath 和 children 判断
+        this.$emit('expand', { item: this.item, level: this.level })
       }
     }
   }
@@ -213,7 +208,8 @@
   .dm-sub {
     position: fixed;
     /* left/top 由 :style 绑定 */
-    max-height: 300px;
+    /* --maxHeight 由顶层 .dm-panel 的内联样式设置，自定义属性沿 DOM 继承到各层 .dm-sub */
+    max-height: var(--maxHeight, 300px);
     overflow-y: auto;
     overflow-x: hidden;
     /* 滚动条空间：内容超出时预留（auto），避免项数少时空滚动条占位挤压内容 */
