@@ -1,6 +1,6 @@
 name: Publish
 
-# 推送 v* tag 触发:构建后同时发布到 npmjs.com 与 GitHub Packages
+# 推送 v* tag 触发:构建 → 发布 npmjs.com → 创建 GitHub Release
 # 发版流程:本地 npm version patch|minor|major(自动 commit + 打 tag 并推送)→ 本 workflow 自动执行
 on:
   push:
@@ -11,12 +11,10 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      packages: write
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
-      # 发布 npmjs.com 用;同时生成 .npmrc 写入 _authToken
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -27,23 +25,15 @@ jobs:
           npm ci
           npm run build
 
-      # 同版本重复推送(如 tag 重推)或未配置 NPM_TOKEN 时跳过,不阻断 GitHub Packages 发布
+      # 同版本重复推送(如 tag 重推)时 npm 会拒绝发布,容错跳过避免误报红叉
       - name: Publish to npmjs.com
         continue-on-error: true
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      # GitHub Packages 的 npm 包名必须带与仓库 owner 一致的 scope,
-      # 这里发布为 @winningh/vue-cascader-menu(与 npmjs 上的同名无 scope 包互不影响)
-      - uses: actions/setup-node@v4
+      # 依据 tag 创建 GitHub Release,自动汇总自上个版本以来的提交作为 release notes
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          node-version: 20
-          registry-url: https://npm.pkg.github.com/
-
-      - name: Publish to GitHub Packages
-        run: |
-          node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));p.name='@winningh/'+p.name;fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');"
-          npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          generate_release_notes: true
