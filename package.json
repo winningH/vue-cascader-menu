@@ -1,6 +1,6 @@
 {
   "name": "vue-cascader-menu",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Vue 2 多级级联下拉菜单组件，支持异步加载与多实例互斥",
   "type": "module",
   "main": "./dist/vue-cascader-menu.umd.cjs",
