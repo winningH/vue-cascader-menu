@@ -16,6 +16,24 @@ npm i vue-cascader-menu
 import 'vue-cascader-menu/style.css'
 ```
 
+也可以从 GitHub Packages 安装（包名为 `@winningh/vue-cascader-menu`），在项目 `.npmrc` 中配置：
+
+```ini
+@winningh:registry=https://npm.pkg.github.com/
+//npm.pkg.github.com/:_authToken=<GitHub PAT（需 read:packages 权限）>
+```
+
+## 发版流程
+
+推 `v*` tag 即自动发布（GitHub Actions 双发布到 npmjs.com 与 GitHub Packages）：
+
+```bash
+npm version patch   # 或 minor / major：改版本 + 自动 commit + 打 tag 并推送
+# Actions 跑完后：npmjs.com 上是 vue-cascader-menu，GitHub Packages 上是 @winningh/vue-cascader-menu
+```
+
+npmjs.com 发布需要在仓库 Settings → Secrets and variables → Actions 配置 `NPM_TOKEN`。
+
 ## 用法
 
 ```vue
