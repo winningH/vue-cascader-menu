@@ -44,7 +44,7 @@
     "type": "git",
     "url": "git+https://github.com/winningH/vue-cascader-menu.git"
   },
-  "homepage": "https://github.com/winningH/vue-cascader-menu#readme",
+  "homepage": "https://lighting-two.vercel.app/drop-menu",
   "bugs": {
     "url": "https://github.com/winningH/vue-cascader-menu/issues"
   }
