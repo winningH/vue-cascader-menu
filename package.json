@@ -39,5 +39,13 @@
     "prepublishOnly": "npm run build",
     "postversion": "git push && git push --tags",
     "preversion": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/winningH/vue-cascader-menu.git"
+  },
+  "homepage": "https://github.com/winningH/vue-cascader-menu#readme",
+  "bugs": {
+    "url": "https://github.com/winningH/vue-cascader-menu/issues"
   }
 }
