@@ -42,8 +42,9 @@
     data() {
       return {
         visible: false,
-        // 当前展开路径：从顶层到展开节点的原节点对象引用数组（[] 表示全部收起）
-        // 唯一的展开状态源，子项根据它纯计算出自身 isActive；点击时子项上抛 { item, level }，这里统一 toggle
+        // 当前展开路径：从根到展开节点的 value 链数组（[] 表示全部收起）
+        // 唯一的展开状态源，子项根据它纯计算出自身 isActive。存 value 链而非对象引用：
+        // data 整树重赋值后引用全部失效，value 链仍能对上新树同链节点、保留展开状态
         expandedPath: []
       }
     },
@@ -60,17 +61,19 @@
         // 清空展开路径即可，子项的 isActive 随之变 false，无需逐个通知子组件
         this.expandedPath = []
       },
-      // 子项 expand：item 为被点节点的原引用，level 为其层级
-      // 已展开（expandedPath[level] === item）：已加载的切换收起（保留祖先展开）；
+      // 子项 expand：item 为被点节点的原引用，level 为其层级，valuePath 为根到该节点的 value 链
+      // 已展开（valuePath 与 expandedPath 前缀逐项相等）：已加载的切换收起（保留祖先展开）；
       //   未加载是异步重试场景，保持展开不动
-      // 未展开：截取前 level 项后接上 item —— 深层旧状态自然丢弃，同层兄弟自然互斥
-      onExpand({ item, level }) {
-        if (this.expandedPath[level] === item) {
+      // 未展开：直接记住该 value 链 —— 深层旧状态自然丢弃，同层兄弟自然互斥；
+      //   之后无论外部原地塞 children 还是整树重赋值 data，子项按链比对都能自动对上并弹出
+      onExpand({ item, level, valuePath }) {
+        const isSelf = valuePath.every((v, i) => this.expandedPath[i] === v)
+        if (isSelf) {
           if (item.children && item.children.length) {
             this.expandedPath = this.expandedPath.slice(0, level)
           }
         } else {
-          this.expandedPath = [...this.expandedPath.slice(0, level), item]
+          this.expandedPath = valuePath
         }
       },
       // payload = {...item, path: [祖宗...自身]}

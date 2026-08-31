@@ -50,7 +50,7 @@
       level: { type: Number, default: 0 },
       // 祖宗路径：从顶层到父节点的对象数组，顶层传 []
       path: { type: Array, default: () => [] },
-      // 当前展开路径（原节点对象引用数组），由 DropMenu 持有、逐层透传
+      // 当前展开路径（根到展开节点的 value 链数组），由 DropMenu 持有、逐层透传
       expandedPath: { type: Array, default: () => [] }
     },
     data() {
@@ -61,9 +61,15 @@
       }
     },
     computed: {
-      // 同一节点对象在树中只出现一次，引用相等即精确匹配，无需 value 比较和祖先链校验
+      // 展开状态按 value 链（根到自身的 value 数组）比对，不比对象引用：
+      // 引用在 data 整树重赋值后会失效，value 链对上新树的同链节点即可保留展开状态。
+      // 必须比整条链、不能只比本层：不同分支下同 value 的节点要靠祖先链区分
       isActive() {
-        return this.expandedPath[this.level] === this.item
+        const myPath = [...this.path, this.item].map((i) => i.value)
+        return (
+          myPath.length === this.expandedPath.length &&
+          myPath.every((v, i) => this.expandedPath[i] === v)
+        )
       },
       // loading 是 item 的属性，由外部维护：组件只读不写（遵循单向数据流）
       // 外部 onSelect 收到 select 后设 item.loading=true；成功塞 children 时设 false；失败设 false
@@ -113,9 +119,13 @@
       handleClick() {
         if (this.item.disabled) return
 
-        // 回传对象：自身副本 + path（祖宗到自身的原节点引用数组）
-        // path 里的元素是原引用，外面异步加载时 payload.path[last].children = [...] 可改原数据
-        const payload = { ...this.item, path: [...this.path, this.item] }
+        // value 链：根到自身的 value 数组，是跨数据重建稳定的身份标识
+        const valuePath = [...this.path, this.item].map((i) => i.value)
+
+        // 回传对象：自身副本 + path（祖宗到自身的原节点引用数组）+ valuePath
+        // path 里的元素是原引用，外面原地加载时 payload.path[last].children = [...] 可改原数据；
+        // valuePath 供外部跨数据刷新记住选中位置（引用在整树重赋值后会失效，value 链不会）
+        const payload = { ...this.item, path: [...this.path, this.item], valuePath }
 
         // 叶子节点：emit select，DropMenu 判 hasChildren 后会关闭整个下拉
         if (this.item.hasChildren === false) {
@@ -129,13 +139,13 @@
         // 待异步加载：emit select 让外部塞 children 并由外部设 item.loading=true（单向数据流）
         if (!loaded) {
           if (this.loading) return // 防首次连点高频触发（重试场景外部已设 loading=true）
-          this.$emit('expand', { item: this.item, level: this.level })
+          this.$emit('expand', { item: this.item, level: this.level, valuePath })
           this.$emit('select', payload)
           return
         }
 
         // 已加载/待加载统一上抛，是否切换收起由 DropMenu 依据当前 expandedPath 和 children 判断
-        this.$emit('expand', { item: this.item, level: this.level })
+        this.$emit('expand', { item: this.item, level: this.level, valuePath })
       }
     }
   }
