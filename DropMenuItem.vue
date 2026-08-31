@@ -63,13 +63,11 @@
     computed: {
       // 展开状态按 value 链（根到自身的 value 数组）比对，不比对象引用：
       // 引用在 data 整树重赋值后会失效，value 链对上新树的同链节点即可保留展开状态。
-      // 必须比整条链、不能只比本层：不同分支下同 value 的节点要靠祖先链区分
+      // 必须比整条链、不能只比本层：不同分支下同 value 的节点要靠祖先链区分。
+      // 是前缀比对、不能要求等长：展开深层时祖先必须保持 active（子菜单 v-show 依赖它）
       isActive() {
         const myPath = [...this.path, this.item].map((i) => i.value)
-        return (
-          myPath.length === this.expandedPath.length &&
-          myPath.every((v, i) => this.expandedPath[i] === v)
-        )
+        return myPath.every((v, i) => this.expandedPath[i] === v)
       },
       // loading 是 item 的属性，由外部维护：组件只读不写（遵循单向数据流）
       // 外部 onSelect 收到 select 后设 item.loading=true；成功塞 children 时设 false；失败设 false
