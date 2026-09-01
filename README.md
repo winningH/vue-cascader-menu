@@ -166,6 +166,16 @@ onSelect(payload) {
 - **异步加载的 `loading` 改为外部控制**：组件不再自己维护 loading 状态，由外部在收到待加载节点的 `select` 后设 `item.loading = true`，塞入 children 或失败时设回 `false`（配合 `$set` 保证响应式）。从 1.0.x 升级需按上述示例调整加载逻辑
 - 内部重构：展开状态提升为根组件单一数据源，移除逐层 `activeChild` 与父调子的 `resetAll`
 
+## 开发
+
+```bash
+npm install
+npm test        # 运行单元测试（vitest + @vue/test-utils，18 个用例）
+npm run build   # 构建产物
+```
+
+测试覆盖（`__tests__/DropMenu.test.js`）：面板开合、叶子选中与 select payload（path/valuePath）、待加载节点 expand/select 流程、外部 `$set` 原节点 children 后自动展开、逐级展开祖先保持激活、收起深层分支、同层切换互斥、**data 整树重赋值保留展开状态**、异分支同 value 不串高亮、disabled 拦截、loading 防重复触发、多实例互斥。`preversion`/`prepublishOnly` 会自动先跑测试再构建发版。
+
 ## License
 
 MIT

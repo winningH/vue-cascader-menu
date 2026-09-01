@@ -20,10 +20,11 @@ jobs:
           node-version: 20
           registry-url: https://registry.npmjs.org/
 
-      - name: Install and build
+      - name: Install, build and test
         run: |
           npm ci
           npm run build
+          npm test
 
       # 同版本重复推送(如 tag 重推)时 npm 会拒绝发布,容错跳过避免误报红叉
       - name: Publish to npmjs.com
