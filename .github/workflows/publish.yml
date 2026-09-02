@@ -17,7 +17,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          # Node 24 自带 npm 11,与本地生成 lockfile 的 npm 同代
+          # (npm 10 的 npm ci 会误判 lockfile 不同步;测试依赖 jsdom 30 也要求 node>=22.14)
+          node-version: 24
           registry-url: https://registry.npmjs.org/
 
       - name: Install, build and test
