@@ -26,10 +26,14 @@ function makeTree() {
   ]
 }
 
+function getPanel() {
+  return document.body.querySelector('.dm-panel')
+}
+
 // 按 .dm-label 精确匹配节点
 // 注意：本环境 findAll 返回的 WrapperArray 不是真数组，这里用原生 querySelectorAll + createWrapper 保证可靠
 function findItem(wrapper, value) {
-  const els = Array.from(wrapper.element.querySelectorAll('.dm-item'))
+  const els = Array.from(document.body.querySelectorAll('.dm-item'))
   const el = els.find((el) => el.querySelector('.dm-label').textContent.trim() === value)
   return el ? createWrapper(el, wrapper.options) : undefined
 }
@@ -58,15 +62,16 @@ describe('DropMenu', () => {
   })
 
   it('初始状态：面板隐藏，展开路径为空', () => {
-    expect(wrapper.find('.dm-panel').isVisible()).toBe(false)
+    expect(getPanel()).toBeNull()
     expect(wrapper.vm.expandedPath).toEqual([])
   })
 
   it('点击触发器开合面板', async () => {
     await openMenu(wrapper)
-    expect(wrapper.find('.dm-panel').isVisible()).toBe(true)
+    expect(getPanel()).toBeTruthy()
+    expect(getPanel().style.display).not.toBe('none')
     await openMenu(wrapper)
-    expect(wrapper.find('.dm-panel').isVisible()).toBe(false)
+    expect(getPanel()).toBeNull()
   })
 
   it('点击一级叶子：emit select，payload 含自身副本/path/valuePath，并自动关闭', async () => {
@@ -80,7 +85,7 @@ describe('DropMenu', () => {
     expect(payload.path.map((n) => n.value)).toEqual(['leaf'])
     expect(payload.valuePath).toEqual(['leaf'])
     // 叶子选中自动关闭
-    expect(wrapper.find('.dm-panel').isVisible()).toBe(false)
+    expect(getPanel()).toBeNull()
   })
 
   it('点击待加载节点：记录展开路径、emit select，不关闭', async () => {
@@ -95,7 +100,7 @@ describe('DropMenu', () => {
     expect(payload.value).toBe('x')
     expect(payload.hasChildren).toBe(true)
     // 不关闭
-    expect(wrapper.find('.dm-panel').isVisible()).toBe(true)
+    expect(getPanel()).toBeTruthy()
   })
 
   it('外部 $set 原节点 children 后子菜单自动展开（异步加载流程）', async () => {
@@ -117,6 +122,16 @@ describe('DropMenu', () => {
     const sub = findItem(wrapper, 'x').element.parentElement.querySelector('.dm-sub')
     expect(sub.style.display).not.toBe('none')
     expect(sub.textContent).toContain('xleaf')
+  })
+
+  it('面板挂载于 body，且子菜单仍归属于根菜单节点树', async () => {
+    await openMenu(wrapper)
+    const panel = getPanel()
+    expect(panel).toBeTruthy()
+    expect(panel.parentElement).toBe(document.body)
+    const firstItem = panel.querySelector('.dm-item')
+    expect(firstItem).toBeTruthy()
+    expect(firstItem.closest('.dm-panel')).toBe(panel)
   })
 
   it('逐级展开：祖先保持激活（isActive 前缀语义，回归用例）', async () => {

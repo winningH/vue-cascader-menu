@@ -4,7 +4,12 @@
       <span class="dm-trigger-text">{{ title }}</span>
       <span class="dm-trigger-arrow" :class="{ up: visible }">▾</span>
     </button>
-    <div v-show="visible" class="dm-panel" :style="{ '--maxHeight': maxHeight + 'px' }">
+    <div
+      v-show="visible"
+      ref="panel"
+      class="dm-panel"
+      :style="{ '--maxHeight': maxHeight + 'px', left: panelLeft + 'px', top: panelTop + 'px' }"
+    >
       <drop-menu-item
         v-for="item in data"
         :key="item.value"
@@ -42,22 +47,57 @@
     data() {
       return {
         visible: false,
+        panelLeft: 0,
+        panelTop: 0,
         // 当前展开路径：从根到展开节点的 value 链数组（[] 表示全部收起）
         // 唯一的展开状态源，子项根据它纯计算出自身 isActive。存 value 链而非对象引用：
         // data 整树重赋值后引用全部失效，value 链仍能对上新树同链节点、保留展开状态
         expandedPath: []
       }
     },
+    mounted() {
+      this.$nextTick(() => {
+        this.$el._dropMenuPanel = this.$refs.panel
+      })
+    },
     methods: {
+      updatePanelPos() {
+        const trigger = this.$el && this.$el.querySelector('.dm-trigger')
+        const panel = this.$refs.panel
+        if (!trigger || !panel) return
+        const rect = trigger.getBoundingClientRect()
+        this.panelLeft = rect.left
+        this.panelTop = rect.bottom + 4
+        panel.style.left = this.panelLeft + 'px'
+        panel.style.top = this.panelTop + 'px'
+      },
+      appendPanelToBody() {
+        const panel = this.$refs.panel
+        if (!panel || panel.parentNode === document.body) {
+          this.updatePanelPos()
+          return
+        }
+        document.body.appendChild(panel)
+        this.$el._dropMenuPanel = panel
+        this.updatePanelPos()
+      },
+      removePanelFromBody() {
+        const panel = this.$refs.panel
+        if (!panel || panel.parentNode !== document.body) return
+        document.body.removeChild(panel)
+        this.$el._dropMenuPanel = null
+      },
       toggle() {
         this.visible ? this.close() : this.open()
       },
       open() {
         setActive(this) // 互斥：触发其他展开的实例 close
         this.visible = true
+        this.$nextTick(this.appendPanelToBody)
       },
       close() {
         this.visible = false
+        this.$nextTick(this.removePanelFromBody)
         // 清空展开路径即可，子项的 isActive 随之变 false，无需逐个通知子组件
         this.expandedPath = []
       },
@@ -87,6 +127,7 @@
       }
     },
     beforeDestroy() {
+      this.removePanelFromBody()
       clearActive(this)
     }
   }
@@ -132,9 +173,9 @@
   }
 
   .dm-panel {
-    position: absolute;
+    position: fixed;
     left: 0;
-    top: calc(100% + 4px);
+    top: 0;
     min-width: 160px;
     max-height: var(--maxHeight, 300px);
     overflow-y: auto;

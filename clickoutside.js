@@ -4,7 +4,10 @@
 export default {
   bind(el, binding) {
     el._clickOutside = (e) => {
-      if (!el.contains(e.target) && typeof binding.value === 'function') {
+      const target = e.target
+      const panel = el._dropMenuPanel
+      const insidePanel = panel && panel.contains && panel.contains(target)
+      if (!el.contains(target) && !insidePanel && typeof binding.value === 'function') {
         binding.value(e)
       }
     }
