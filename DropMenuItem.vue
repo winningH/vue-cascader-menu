@@ -11,8 +11,10 @@
           {{ item.label }}
         </slot>
       </span>
-      <LoadingIcon v-if="loading" class="dm-spin" />
-      <span v-else-if="item.hasChildren" class="dm-arrow">▸</span>
+      <span class="dm-icon">
+        <LoadingIcon v-if="loading" class="dm-spin" />
+        <span v-else-if="item.hasChildren" class="dm-arrow">▸</span>
+      </span>
     </div>
     <div
       v-show="isActive && item.children && item.children.length"
@@ -186,6 +188,19 @@
 
   .dm-label {
     flex: 1;
+  }
+
+  /* 右侧图标容器：固定宽高 + 裁剪溢出。旋转的 svg loading 图标绘制区域一旦扫出
+     .dm-item 行框，会与相邻 fixed 面板触发 Chromium 合成层 overlap testing 翻转
+     （表现为子菜单消失），锁死在行框内根治 */
+  .dm-icon {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    overflow: hidden;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   .dm-arrow {

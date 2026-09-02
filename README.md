@@ -154,6 +154,11 @@ onSelect(payload) {
 - **多级滚动**：每层子菜单独立滚动（`maxHeight`），子菜单用 `position:fixed` 定位，不受祖先 overflow 裁剪
 - **数据刷新不丢展开状态**：展开状态按 value 链记录，`data` 整树重赋值后，只要新树里存在相同 value 链的节点，展开位置自动保留（要求同一父级下 value 唯一，与 `:key="item.value"` 的既有要求一致）
 
+## v1.2.1 变更
+
+- **修复子菜单"消失"的渲染 bug**：loading 旋转图标的 transform 动画在绘制区域超出 `.dm-item` 行框时，会与相邻的 `position:fixed` 子面板触发 Chromium 合成层 overlap testing 翻转（小数像素边界贴合时），表现为点击展开下一级时子菜单闪失。现箭头与 loading 图标包裹在固定 16×16、`overflow: hidden` 的 `.dm-icon` 容器内，绘制区域锁定在行框中，不再触发
+- 对外 API、DOM 结构（`.dm-arrow`/`.dm-spin` 类名保留）与视觉均无变化，从 1.2.0 升级无需调整代码
+
 ## v1.2.0 变更
 
 - **展开状态的内部判据从"对象引用相等"改为"value 链比对"**：`data` 在下拉展开期间整树重赋值不再导致展开状态静默塌掉、异步加载后子菜单不再丢失自动弹出；原地修改 children/loading 的用法行为不变
