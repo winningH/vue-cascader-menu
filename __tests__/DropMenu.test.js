@@ -38,6 +38,24 @@ function getPanelAtLevel(level) {
   return document.body.querySelector(`.dm-panel[data-level="${level}"]`)
 }
 
+// 扁平结构下"展开到第几层"体现为有几列
+function getPanelCount() {
+  return document.body.querySelectorAll('.dm-panel').length
+}
+
+// jsdom 不排版，offsetWidth/innerWidth 都要手动给定才能验证视口碰撞翻转
+function setSize(el, width, height) {
+  Object.defineProperty(el, 'offsetWidth', { value: width, configurable: true })
+  Object.defineProperty(el, 'offsetHeight', { value: height, configurable: true })
+}
+
+function setViewport(width, height) {
+  Object.defineProperty(window, 'innerWidth', { value: width, configurable: true })
+  Object.defineProperty(window, 'innerHeight', { value: height, configurable: true })
+}
+
+const DEFAULT_VIEWPORT = [window.innerWidth, window.innerHeight]
+
 // 按 .dm-label 精确匹配节点
 // 注意：本环境 findAll 返回的 WrapperArray 不是真数组，这里用原生 querySelectorAll + createWrapper 保证可靠
 function findItem(wrapper, value) {
@@ -67,6 +85,8 @@ describe('DropMenu', () => {
 
   afterEach(() => {
     wrapper && wrapper.destroy()
+    setViewport(DEFAULT_VIEWPORT[0], DEFAULT_VIEWPORT[1])
+    document.body.innerHTML = ''
   })
 
   it('初始状态：面板隐藏，展开路径为空', () => {
@@ -132,38 +152,42 @@ describe('DropMenu', () => {
     expect(sub.textContent).toContain('xleaf')
   })
 
-  it('异步子级首次渲染时即使用正确定位', async () => {
+  it('异步 children 到达后新增一列，容器锚点不变', async () => {
+    const triggerRect = { left: 10, bottom: 40 }
+    wrapper.find('.dm-trigger').element.getBoundingClientRect = () => triggerRect
+
     await openMenu(wrapper)
     await clickItem(wrapper, 'x')
-
-    const xItem = findItem(wrapper, 'x').element
-    xItem.getBoundingClientRect = () => ({ top: 96 })
+    await wrapper.vm.$nextTick()
+    expect(getPanelCount()).toBe(1) // 待加载层不产生空列
 
     const node = wrapper.emitted('select')[0][0].path[0]
     wrapper.vm.$set(node, 'children', [{ label: 'xleaf', value: 'xleaf', hasChildren: false }])
     await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
 
-    const sub = getPanelAtLevel(1)
-    expect(getPanelsContainer().style.left).toBe('0px')
-    expect(getPanelsContainer().style.top).toBe('4px')
-    expect(sub).toBeTruthy()
+    expect(getPanelCount()).toBe(2)
+    expect(getPanelAtLevel(1).textContent).toContain('xleaf')
+    // 新增列不改变锚定位置：容器始终锚在触发器上，列宽由 flex 自动排
+    expect(getPanelsContainer().style.left).toBe('10px')
+    expect(getPanelsContainer().style.top).toBe('44px')
   })
 
-  it('父级面板内部滚动时不重新移动子级面板', async () => {
+  it('列内部滚动时容器不重新定位', async () => {
+    const triggerRect = { left: 10, bottom: 40 }
+    wrapper.find('.dm-trigger').element.getBoundingClientRect = () => triggerRect
+
     await openMenu(wrapper)
     await clickItem(wrapper, 'a')
     await wrapper.vm.$nextTick()
+    expect(getPanelsContainer().style.left).toBe('10px')
 
-    const rootPanel = getPanelAtLevel(0)
-    const subPanel = getPanelAtLevel(1)
-    const initialLeft = subPanel.style.left
-    const initialTop = subPanel.style.top
-
-    rootPanel.dispatchEvent(new Event('scroll', { bubbles: false }))
+    // 列自身滚动（scroll 事件的 target 在 .dm-panel 内）应被忽略
+    getPanelAtLevel(0).dispatchEvent(new Event('scroll', { bubbles: false }))
     await wrapper.vm.$nextTick()
 
-    expect(subPanel.style.left).toBe(initialLeft)
-    expect(subPanel.style.top).toBe(initialTop)
+    expect(getPanelsContainer().style.left).toBe('10px')
+    expect(getPanelsContainer().style.top).toBe('44px')
   })
 
   it('面板挂载于 body，且子菜单仍归属于根菜单节点树', async () => {
@@ -177,9 +201,8 @@ describe('DropMenu', () => {
     expect(firstItem.closest('.dm-panel')).toBe(panel)
   })
 
-  it('页面滚动时根面板和已展开子菜单跟随触发器重新定位', async () => {
+  it('页面滚动时容器跟随触发器重新定位', async () => {
     const triggerRect = { left: 10, bottom: 40 }
-    const rootItemRect = { top: 50 }
     const trigger = wrapper.find('.dm-trigger').element
     trigger.getBoundingClientRect = () => triggerRect
 
@@ -187,11 +210,8 @@ describe('DropMenu', () => {
     await clickItem(wrapper, 'a')
     await wrapper.vm.$nextTick()
 
-    const rootItem = findItem(wrapper, 'a').element
-    rootItem.getBoundingClientRect = () => rootItemRect
     triggerRect.left = 30
     triggerRect.bottom = 80
-    rootItemRect.top = 95
 
     document.dispatchEvent(new Event('scroll'))
     await wrapper.vm.$nextTick()
@@ -202,7 +222,6 @@ describe('DropMenu', () => {
 
   it('窗口尺寸变化时按新的触发器位置重新定位级联面板', async () => {
     const triggerRect = { left: 20, bottom: 60 }
-    const rootItemRect = { top: 70 }
     const trigger = wrapper.find('.dm-trigger').element
     trigger.getBoundingClientRect = () => triggerRect
 
@@ -210,31 +229,26 @@ describe('DropMenu', () => {
     await clickItem(wrapper, 'a')
     await wrapper.vm.$nextTick()
 
-    const rootItem = findItem(wrapper, 'a').element
-    rootItem.getBoundingClientRect = () => rootItemRect
     triggerRect.left = 45
     triggerRect.bottom = 100
-    rootItemRect.top = 115
 
     window.dispatchEvent(new Event('resize'))
     await wrapper.vm.$nextTick()
 
     expect(getPanelsContainer().style.left).toBe('45px')
     expect(getPanelsContainer().style.top).toBe('104px')
-    // maxHeight 由外层容器提供，各级面板继承同一个高度变量
-    expect(getPanelsContainer().style.getPropertyValue('--maxHeight')).toBe('300px')
-    expect(getComputedStyle(getPanelsContainer()).height).toBe('300px')
-    expect(getComputedStyle(getPanelAtLevel(0)).height).toBe('300px')
+    // height 由外层容器统一提供，各列通过自定义属性继承同一高度
+    expect(getPanelsContainer().style.getPropertyValue('--height')).toBe('300px')
+    expect(getPanelAtLevel(0).style.getPropertyValue('--height')).toBe('')
   })
 
-  it('maxHeight 由外层容器统一控制列高', async () => {
-    await wrapper.setProps({ maxHeight: 200 })
+  it('height 由外层容器统一控制列高', async () => {
+    await wrapper.setProps({ height: 200 })
     await openMenu(wrapper)
 
-    expect(getPanelsContainer().style.getPropertyValue('--maxHeight')).toBe('200px')
-    expect(getComputedStyle(getPanelsContainer()).height).toBe('200px')
-    expect(getComputedStyle(getPanelAtLevel(0)).height).toBe('200px')
-    expect(getPanelAtLevel(0).style.getPropertyValue('--maxHeight')).toBe('')
+    expect(getPanelsContainer().style.getPropertyValue('--height')).toBe('200px')
+    // 各列不自带 --height，靠继承外层容器保证等高
+    expect(getPanelAtLevel(0).style.getPropertyValue('--height')).toBe('')
   })
 
   it('逐级展开：祖先保持激活（isActive 前缀语义，回归用例）', async () => {
@@ -340,6 +354,96 @@ describe('DropMenu', () => {
     expect(findItem(wrapper, 'p2').classes()).not.toContain('active')
     expect(findItem(wrapper, 'dup').classes()).toContain('active')
     expect(findItem(wrapper, 'dup2')).toBeUndefined()
+  })
+
+  it('第 N 列渲染的是第 N-1 层激活节点的 children', async () => {
+    await openMenu(wrapper)
+    await clickItem(wrapper, 'a')
+    await wrapper.vm.$nextTick()
+
+    expect(getPanelAtLevel(0).textContent).toContain('a')
+    expect(getPanelAtLevel(1).textContent).toContain('b')
+    expect(getPanelAtLevel(1).textContent).toContain('aleaf')
+
+    await clickItem(wrapper, 'b')
+    await wrapper.vm.$nextTick()
+
+    expect(getPanelAtLevel(2).textContent).toContain('c')
+    expect(getPanelAtLevel(2).textContent).toContain('bleaf')
+  })
+
+  it('视口右侧空间不足时容器翻转到触发器左侧', async () => {
+    const triggerRect = { left: 900, right: 1000, top: 10, bottom: 40 }
+    wrapper.find('.dm-trigger').element.getBoundingClientRect = () => triggerRect
+
+    await openMenu(wrapper)
+    await clickItem(wrapper, 'a')
+    await wrapper.vm.$nextTick()
+
+    const container = getPanelsContainer()
+    setSize(container, 400, 300)
+    setViewport(1024, 768)
+
+    window.dispatchEvent(new Event('resize'))
+    await wrapper.vm.$nextTick()
+
+    // 900 + 400 > 1024 → 向左翻转：left = rect.right - w = 1000 - 400
+    expect(container.style.left).toBe('600px')
+    expect(container.style.top).toBe('44px') // 44 + 300 < 768，纵向不翻转
+  })
+
+  it('视口下方空间不足时容器翻转到触发器上方', async () => {
+    const triggerRect = { left: 10, right: 110, top: 500, bottom: 540 }
+    wrapper.find('.dm-trigger').element.getBoundingClientRect = () => triggerRect
+
+    await openMenu(wrapper)
+    await clickItem(wrapper, 'a')
+    await wrapper.vm.$nextTick()
+
+    const container = getPanelsContainer()
+    setSize(container, 400, 300)
+    setViewport(1024, 600)
+
+    window.dispatchEvent(new Event('resize'))
+    await wrapper.vm.$nextTick()
+
+    // 544 + 300 > 600 → 向上翻转：top = rect.top - h - 4 = 500 - 300 - 4
+    expect(container.style.left).toBe('10px') // 10 + 400 < 1024，横向不翻转
+    expect(container.style.top).toBe('196px')
+  })
+
+  it('数据重建后链尾节点消失时同步裁剪展开链', async () => {
+    await openMenu(wrapper)
+    await clickItem(wrapper, 'a')
+    await clickItem(wrapper, 'b')
+    expect(wrapper.vm.expandedPath).toEqual(['a', 'b'])
+    expect(getPanelCount()).toBe(3)
+
+    // 重建树：a 下不再有 b
+    await wrapper.setProps({
+      data: [
+        {
+          label: 'a', value: 'a', hasChildren: true,
+          children: [{ label: 'aleaf', value: 'aleaf', hasChildren: false }]
+        }
+      ]
+    })
+    await wrapper.vm.$nextTick()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.vm.expandedPath).toEqual(['a'])
+    expect(getPanelCount()).toBe(2)
+  })
+
+  it('组件销毁后 body 无残留容器', async () => {
+    await openMenu(wrapper)
+    expect(getPanelsContainer()).toBeTruthy()
+
+    wrapper.destroy()
+    await wrapper.vm.$nextTick()
+
+    expect(document.body.querySelector('.dm-panels')).toBeNull()
+    wrapper = null // afterEach 里跳过重复 destroy
   })
 })
 

@@ -20,7 +20,7 @@ import 'vue-cascader-menu/style.css'
 
 ```vue
 <template>
-  <drop-menu title="异步数据" :data="menuData" :max-height="300" @select="onSelect" />
+  <drop-menu title="异步数据" :data="menuData" :height="300" @select="onSelect" />
 </template>
 
 <script>
@@ -67,7 +67,7 @@ import 'vue-cascader-menu/style.css'
 | --- | --- | --- | --- | --- |
 | `title` | String | 是 | — | 触发器按钮文案 |
 | `data` | Array | 是 | — | 菜单树，节点字段见下 |
-| `maxHeight` | Number | 否 | `300` | 面板与每层子菜单的最大高度（px），超出滚动 |
+| `height` | Number | 否 | `300` | 面板与每列的高度（px），超出滚动。扁平结构下所有列等高，此值即每列的实际高度（v1.3.x 及之前为 `maxHeight`，v1.5.0 更名） |
 
 节点字段：
 
@@ -148,11 +148,23 @@ onSelect(payload) {
 
 ## 交互行为
 
-- **展开/收起**：点击有子级的项展开下一级（右侧弹出），再次点击同项收起（祖先保持展开），点击同层兄弟项自动切换并收起旧分支的深层展开
+- **展开/收起**：点击有子级的项在其右侧展开新的一列，再次点击同项收起（祖先列保持），点击同层兄弟项自动切换并丢弃旧分支的深层列
 - **多实例互斥**：页面上多个 DropMenu 同时只允许展开一个，打开新的自动关闭旧的
 - **clickoutside 收起**：点击组件外部自动关闭，关闭后展开状态整体重置
-- **多级滚动**：每层级联面板独立滚动（`maxHeight`），所有面板作为 body 弹层下的同级节点并排渲染，不受祖先 overflow 裁剪
-- **数据刷新不丢展开状态**：展开状态按 value 链记录，`data` 整树重赋值后，只要新树里存在相同 value 链的节点，展开位置自动保留（要求同一父级下 value 唯一，与 `:key="item.value"` 的既有要求一致）
+- **同级列并排（ElementUI 风格）**：各层级作为 body 弹层容器（`.dm-panels`）内的**同级列**（`.dm-panel`）横向并排渲染，列与列之间不存在嵌套关系——因此不受祖先 overflow 裁剪，也不需要 JS 计算列坐标
+- **每列独立滚动**：各列高度统一为 `height`，超出各自滚动；某一列滚动条的出现/消失不会影响其它列的位置
+- **视口碰撞翻转**：容器按视口定位，右侧或下方空间不足时自动翻转到触发器的另一侧，避免超出视口的部分被裁掉
+- **数据刷新不丢展开状态**：展开状态按 value 链记录，`data` 整树重赋值后，只要新树里存在相同 value 链的节点，展开位置自动保留（要求同一父级下 value 唯一，与 `:key="item.value"` 的既有要求一致）；链尾节点若在新数据中已不存在，展开链自动裁剪到能匹配的最深一层
+
+## v1.5.0 变更
+
+- **prop 更名（破坏性）**：`maxHeight` → `height`。扁平化后所有列等高，该值就是每列的实际高度而非"最大"高度，原名已名不副实。升级方式：`:max-height="300"` 改为 `:height="300"`，默认值 300 不变，未显式传值的无需调整
+- **视口碰撞翻转**：容器挂载 body 后按视口定位，右侧或下方空间不足时自动翻转到触发器另一侧。修复靠右/靠下的触发器在展开深层级时，超出视口的列被外层 `overflow: hidden` 整列裁掉的问题（观感接近"子菜单出不来"）
+- **层级写高**：容器 `z-index` 由 100 提升至 2000。挂在 body 下参与的是 root stacking context，避免被宿主页面的 fixed 头部/侧边栏/遮罩（常见 1000+）盖住
+- **展开链自愈**：数据重建后若链尾节点已不存在，自动把展开链裁剪到能匹配的最深一层，避免展开状态与可见列不一致
+- **容器尺寸变化时重定位**：列结构变化（展开/收起、异步 children 到达新增一列）时重算定位；移除原先每次更新都同步测量触发器的 `updated` 钩子
+- **修复销毁竞态**：`open()` 与 `destroy()` 落在同一 tick 时，不再把已销毁组件的容器挂到 body 造成孤儿节点残留
+- **DOM 精简**：移除失去作用的 `.dm-item-wrap` 包裹层（`DropMenuItem` 根元素直接是 `.dm-item`）；`.dm-icon` 的溢出裁剪改为 `clip`（`hidden` 保留为旧内核降级）
 
 ## v1.3.1 变更
 
@@ -200,11 +212,11 @@ onSelect(payload) {
 
 ```bash
 npm install
-npm test        # 运行单元测试（vitest + @vue/test-utils，18 个用例）
+npm test        # 运行单元测试（vitest + @vue/test-utils，29 个用例）
 npm run build   # 构建产物
 ```
 
-测试覆盖（`__tests__/DropMenu.test.js`）：面板开合、叶子选中与 select payload（path/valuePath）、待加载节点 expand/select 流程、外部 `$set` 原节点 children 后自动展开、逐级展开祖先保持激活、收起深层分支、同层切换互斥、**data 整树重赋值保留展开状态**、异分支同 value 不串高亮、disabled 拦截、loading 防重复触发、多实例互斥。`preversion`/`prepublishOnly` 会自动先跑测试再构建发版。
+测试覆盖（`__tests__/DropMenu.test.js`）：面板开合、叶子选中与 select payload（path/valuePath）、待加载节点 expand/select 流程、外部 `$set` 原节点 children 后自动展开并新增列、**待加载层不产生空列**、**第 N 列渲染上一层激活节点的 children**、逐级展开祖先保持激活、收起深层分支、同层切换互斥、**data 整树重赋值保留展开状态**、**链尾节点消失时裁剪展开链**、异分支同 value 不串高亮、disabled 拦截、loading 防重复触发、多实例互斥、容器挂 body 与**销毁后无残留**、列内部滚动不触发重定位、scroll/resize 跟随触发器、**视口左右/上下碰撞翻转**。`preversion`/`prepublishOnly` 会自动先跑测试再构建发版。
 
 ## License
 

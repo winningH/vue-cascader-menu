@@ -1,21 +1,19 @@
 <template>
-  <div class="dm-item-wrap">
-    <div
-      ref="item"
-      class="dm-item"
-      :class="{ disabled: item.disabled, active: isActive }"
-      @click="handleClick"
-    >
-      <span class="dm-label">
-        <slot name="label" :item="item" :level="level" :path="[...path, item]">
-          {{ item.label }}
-        </slot>
-      </span>
-      <span class="dm-icon">
-        <LoadingIcon v-if="loading" class="dm-spin" />
-        <span v-else-if="item.hasChildren" class="dm-arrow">▸</span>
-      </span>
-    </div>
+  <div
+    ref="item"
+    class="dm-item"
+    :class="{ disabled: item.disabled, active: isActive }"
+    @click="handleClick"
+  >
+    <span class="dm-label">
+      <slot name="label" :item="item" :level="level" :path="[...path, item]">
+        {{ item.label }}
+      </slot>
+    </span>
+    <span class="dm-icon">
+      <LoadingIcon v-if="loading" class="dm-spin" />
+      <span v-else-if="item.hasChildren" class="dm-arrow">▸</span>
+    </span>
   </div>
 </template>
 
@@ -37,7 +35,7 @@
       // 展开状态按 value 链（根到自身的 value 数组）比对，不比对象引用：
       // 引用在 data 整树重赋值后会失效，value 链对上新树的同链节点即可保留展开状态。
       // 必须比整条链、不能只比本层：不同分支下同 value 的节点要靠祖先链区分。
-      // 是前缀比对、不能要求等长：展开深层时祖先必须保持 active（子菜单 v-show 依赖它）
+      // 是前缀比对、不能要求等长：展开深层时祖先必须保持 active（后续各列依赖它）
       isActive() {
         const myPath = [...this.path, this.item].map((i) => i.value)
         return myPath.every((v, i) => this.expandedPath[i] === v)
@@ -47,7 +45,7 @@
       // 组件 computed 响应 item.loading 变化，UI 自动切换转圈/箭头
       loading() {
         return this.item.loading === true
-      },
+      }
     },
     methods: {
       handleClick() {
@@ -117,17 +115,17 @@
   .dm-label {
     flex: 1;
     white-space: nowrap;
-    word-break: normal;
   }
 
-  /* 右侧图标容器：固定宽高 + 裁剪溢出。旋转的 svg loading 图标绘制区域一旦扫出
-     .dm-item 行框，会与相邻 fixed 面板触发 Chromium 合成层 overlap testing 翻转
-     （表现为子菜单消失），锁死在行框内根治 */
+  /* 右侧图标容器：固定 16×16 并裁剪溢出。旋转的 loading 图标若扫出行框，
+     会污染所在列的 scrollable overflow region，导致列宽/滚动条抖动。
+     clip 只裁剪、不创建滚动容器；hidden 作为旧内核的降级（不支持 clip 时生效） */
   .dm-icon {
     flex-shrink: 0;
     width: 16px;
     height: 16px;
     overflow: hidden;
+    overflow: clip;
     display: inline-flex;
     align-items: center;
     justify-content: center;
