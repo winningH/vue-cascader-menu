@@ -30,6 +30,10 @@ function getPanel() {
   return document.body.querySelector('.dm-panel')
 }
 
+function getPanelsContainer() {
+  return document.body.querySelector('.dm-panels')
+}
+
 function getPanelAtLevel(level) {
   return document.body.querySelector(`.dm-panel[data-level="${level}"]`)
 }
@@ -132,9 +136,7 @@ describe('DropMenu', () => {
     await openMenu(wrapper)
     await clickItem(wrapper, 'x')
 
-    const rootPanel = getPanelAtLevel(0)
     const xItem = findItem(wrapper, 'x').element
-    rootPanel.getBoundingClientRect = () => ({ right: 180 })
     xItem.getBoundingClientRect = () => ({ top: 96 })
 
     const node = wrapper.emitted('select')[0][0].path[0]
@@ -142,8 +144,9 @@ describe('DropMenu', () => {
     await wrapper.vm.$nextTick()
 
     const sub = getPanelAtLevel(1)
-    expect(sub.style.left).toBe('180px')
-    expect(sub.style.top).toBe('4px')
+    expect(getPanelsContainer().style.left).toBe('0px')
+    expect(getPanelsContainer().style.top).toBe('4px')
+    expect(sub).toBeTruthy()
   })
 
   it('父级面板内部滚动时不重新移动子级面板', async () => {
@@ -167,7 +170,8 @@ describe('DropMenu', () => {
     await openMenu(wrapper)
     const panel = getPanel()
     expect(panel).toBeTruthy()
-    expect(panel.parentElement.parentElement).toBe(document.body)
+    expect(panel.parentElement).toBe(getPanelsContainer())
+    expect(getPanelsContainer().parentElement).toBe(document.body)
     const firstItem = panel.querySelector('.dm-item')
     expect(firstItem).toBeTruthy()
     expect(firstItem.closest('.dm-panel')).toBe(panel)
@@ -176,7 +180,6 @@ describe('DropMenu', () => {
   it('页面滚动时根面板和已展开子菜单跟随触发器重新定位', async () => {
     const triggerRect = { left: 10, bottom: 40 }
     const rootItemRect = { top: 50 }
-    const panelRect = { right: 170 }
     const trigger = wrapper.find('.dm-trigger').element
     trigger.getBoundingClientRect = () => triggerRect
 
@@ -186,26 +189,20 @@ describe('DropMenu', () => {
 
     const rootItem = findItem(wrapper, 'a').element
     rootItem.getBoundingClientRect = () => rootItemRect
-    getPanel().getBoundingClientRect = () => panelRect
     triggerRect.left = 30
     triggerRect.bottom = 80
     rootItemRect.top = 95
-    panelRect.right = 190
 
     document.dispatchEvent(new Event('scroll'))
     await wrapper.vm.$nextTick()
 
-    expect(getPanel().style.left).toBe('30px')
-    expect(getPanel().style.top).toBe('84px')
-    const sub = getPanelAtLevel(1)
-    expect(sub.style.left).toBe('190px')
-    expect(sub.style.top).toBe('84px')
+    expect(getPanelsContainer().style.left).toBe('30px')
+    expect(getPanelsContainer().style.top).toBe('84px')
   })
 
   it('窗口尺寸变化时按新的触发器位置重新定位级联面板', async () => {
     const triggerRect = { left: 20, bottom: 60 }
     const rootItemRect = { top: 70 }
-    const panelRect = { right: 180 }
     const trigger = wrapper.find('.dm-trigger').element
     trigger.getBoundingClientRect = () => triggerRect
 
@@ -215,23 +212,29 @@ describe('DropMenu', () => {
 
     const rootItem = findItem(wrapper, 'a').element
     rootItem.getBoundingClientRect = () => rootItemRect
-    getPanelAtLevel(0).getBoundingClientRect = () => panelRect
     triggerRect.left = 45
     triggerRect.bottom = 100
     rootItemRect.top = 115
-    panelRect.right = 215
 
     window.dispatchEvent(new Event('resize'))
     await wrapper.vm.$nextTick()
 
-    expect(getPanelAtLevel(0).style.left).toBe('45px')
-    expect(getPanelAtLevel(0).style.top).toBe('104px')
-    expect(getPanelAtLevel(1).style.left).toBe('215px')
-    expect(getPanelAtLevel(1).style.top).toBe('104px')
-    // 列高统一：各级面板的 --maxHeight 自定义属性一致（height 由样式表按该变量渲染）
-    const rootMaxHeight = getPanelAtLevel(0).style.getPropertyValue('--maxHeight')
-    expect(rootMaxHeight).toBe('300px')
-    expect(getPanelAtLevel(1).style.getPropertyValue('--maxHeight')).toBe(rootMaxHeight)
+    expect(getPanelsContainer().style.left).toBe('45px')
+    expect(getPanelsContainer().style.top).toBe('104px')
+    // maxHeight 由外层容器提供，各级面板继承同一个高度变量
+    expect(getPanelsContainer().style.getPropertyValue('--maxHeight')).toBe('300px')
+    expect(getComputedStyle(getPanelsContainer()).height).toBe('300px')
+    expect(getComputedStyle(getPanelAtLevel(0)).height).toBe('300px')
+  })
+
+  it('maxHeight 由外层容器统一控制列高', async () => {
+    await wrapper.setProps({ maxHeight: 200 })
+    await openMenu(wrapper)
+
+    expect(getPanelsContainer().style.getPropertyValue('--maxHeight')).toBe('200px')
+    expect(getComputedStyle(getPanelsContainer()).height).toBe('200px')
+    expect(getComputedStyle(getPanelAtLevel(0)).height).toBe('200px')
+    expect(getPanelAtLevel(0).style.getPropertyValue('--maxHeight')).toBe('')
   })
 
   it('逐级展开：祖先保持激活（isActive 前缀语义，回归用例）', async () => {

@@ -4,13 +4,21 @@
       <span class="dm-trigger-text">{{ title }}</span>
       <span class="dm-trigger-arrow" :class="{ up: visible }">▾</span>
     </button>
-    <div v-show="visible" ref="panel" class="dm-panels">
+    <div
+      v-show="visible"
+      ref="panel"
+      class="dm-panels"
+      :style="{
+        '--maxHeight': maxHeight + 'px',
+        left: panelLeft + 'px',
+        top: panelTop + 'px'
+      }"
+    >
       <div
         v-for="panel in panels"
         :key="panel.key"
         class="dm-panel"
         :data-level="panel.level"
-        :style="{ '--maxHeight': maxHeight + 'px' }"
       >
         <drop-menu-item
           v-for="item in panel.items"
@@ -81,15 +89,7 @@
     },
     watch: {
       expandedPath() {
-        if (this.visible) this.$nextTick(this.updateMenuPositions)
-      },
-      data: {
-        deep: true,
-        handler() {
-          if (this.visible) {
-            this.$nextTick(() => this.$nextTick(this.updateMenuPositions))
-          }
-        }
+        if (this.visible) this.$nextTick(this.updatePanelContainerPosition)
       }
     },
     mounted() {
@@ -98,64 +98,43 @@
       })
     },
     updated() {
-      if (this.visible) this.updateMenuPositions()
+      if (this.visible) this.updatePanelContainerPosition()
     },
     methods: {
-      updatePanelPos() {
+      // 只定位挂载到 body 的外层容器，内部各级面板由 flex 兄弟布局自动排列。
+      updatePanelContainerPosition() {
         const trigger = this.$el && this.$el.querySelector('.dm-trigger')
         if (!trigger) return
         const rect = trigger.getBoundingClientRect()
         this.panelLeft = rect.left
         this.panelTop = rect.bottom + 4
         const panel = this.$refs.panel
-        const rootPanel = panel && panel.querySelector('.dm-panel[data-level="0"]')
-        if (rootPanel) {
-          rootPanel.style.left = this.panelLeft + 'px'
-          rootPanel.style.top = this.panelTop + 'px'
-        }
-      },
-      updateMenuPositions() {
-        if (!this.visible) return
-        // 根面板定位已在 updatePanelPos 内完成，这里只处理 level>=1 的横向排布
-        this.updatePanelPos()
-        const panel = this.$refs.panel
-        if (!panel) return
-
-        for (let level = 1; level < this.panels.length; level += 1) {
-          const previousPanel = panel.querySelector(
-            `.dm-panel[data-level='${level - 1}']`
-          )
-          if (!previousPanel) continue
-          const panelRect = previousPanel.getBoundingClientRect()
-          const currentPanel = panel.querySelector(
-            `.dm-panel[data-level='${level}']`
-          )
-          if (!currentPanel) continue
-          currentPanel.style.left = panelRect.right + 'px'
-          currentPanel.style.top = this.panelTop + 'px'
+        if (panel) {
+          panel.style.left = this.panelLeft + 'px'
+          panel.style.top = this.panelTop + 'px'
         }
       },
       handleScroll(event) {
         if (event.target && event.target.closest && event.target.closest('.dm-panel')) return
-        this.updateMenuPositions()
+        this.updatePanelContainerPosition()
       },
       addPositionListeners() {
         document.addEventListener('scroll', this.handleScroll, true)
-        window.addEventListener('resize', this.updateMenuPositions)
+        window.addEventListener('resize', this.updatePanelContainerPosition)
       },
       removePositionListeners() {
         document.removeEventListener('scroll', this.handleScroll, true)
-        window.removeEventListener('resize', this.updateMenuPositions)
+        window.removeEventListener('resize', this.updatePanelContainerPosition)
       },
       appendPanelToBody() {
         const panel = this.$refs.panel
         if (!panel || panel.parentNode === document.body) {
-          this.updatePanelPos()
+          this.updatePanelContainerPosition()
           return
         }
         document.body.appendChild(panel)
         this.$el._dropMenuPanel = panel
-        this.updatePanelPos()
+        this.updatePanelContainerPosition()
       },
       removePanelFromBody() {
         const panel = this.$refs.panel
@@ -252,9 +231,7 @@
   }
 
   .dm-panel {
-    position: fixed;
-    left: 0;
-    top: 0;
+    position: static;
     min-width: 160px;
     width: max-content;
     flex: 0 0 auto;
@@ -265,26 +242,24 @@
     scrollbar-gutter: auto;
     padding: 4px 0;
     background: #fff;
-    border: 1px solid var(--color-border, #e5e7eb);
-    /* 多列并排时边框合并为一根（后续列左移 1px 压在前列边框上），仅首末列保留外侧圆角 */
-    border-radius: 0;
-    margin-left: -1px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    z-index: 100;
-  }
-
-  .dm-panel:first-child {
-    margin-left: 0;
-    border-top-left-radius: 8px;
-    border-bottom-left-radius: 8px;
+    border-right: 1px solid var(--color-border, #e5e7eb);
   }
 
   .dm-panel:last-child {
-    border-top-right-radius: 8px;
-    border-bottom-right-radius: 8px;
+    border-right: 0;
   }
 
   .dm-panels {
-    position: static;
+    position: fixed;
+    display: flex;
+    align-items: flex-start;
+    width: max-content;
+    height: var(--maxHeight, 300px);
+    overflow: hidden;
+    background: #fff;
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    z-index: 100;
   }
 </style>
