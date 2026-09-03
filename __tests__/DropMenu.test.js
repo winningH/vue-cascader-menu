@@ -134,6 +134,35 @@ describe('DropMenu', () => {
     expect(firstItem.closest('.dm-panel')).toBe(panel)
   })
 
+  it('页面滚动时根面板和已展开子菜单跟随触发器重新定位', async () => {
+    const triggerRect = { left: 10, bottom: 40 }
+    const rootItemRect = { top: 50 }
+    const panelRect = { right: 170 }
+    const trigger = wrapper.find('.dm-trigger').element
+    trigger.getBoundingClientRect = () => triggerRect
+
+    await openMenu(wrapper)
+    await clickItem(wrapper, 'a')
+    await wrapper.vm.$nextTick()
+
+    const rootItem = findItem(wrapper, 'a').element
+    rootItem.getBoundingClientRect = () => rootItemRect
+    getPanel().getBoundingClientRect = () => panelRect
+    triggerRect.left = 30
+    triggerRect.bottom = 80
+    rootItemRect.top = 95
+    panelRect.right = 190
+
+    document.dispatchEvent(new Event('scroll'))
+    await wrapper.vm.$nextTick()
+
+    expect(getPanel().style.left).toBe('30px')
+    expect(getPanel().style.top).toBe('84px')
+    const sub = rootItem.closest('.dm-item-wrap').querySelector('.dm-sub')
+    expect(sub.style.left).toBe('190px')
+    expect(sub.style.top).toBe('95px')
+  })
+
   it('逐级展开：祖先保持激活（isActive 前缀语义，回归用例）', async () => {
     await openMenu(wrapper)
     await clickItem(wrapper, 'a') // 展开一级

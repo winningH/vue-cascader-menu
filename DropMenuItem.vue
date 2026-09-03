@@ -24,6 +24,8 @@
       <drop-menu-item
         v-for="c in item.children"
         :key="c.value"
+        ref="childItems"
+        ref-in-for
         :item="c"
         :level="level + 1"
         :path="[...path, item]"
@@ -115,6 +117,14 @@
         const panelRect = this.$el.parentElement.getBoundingClientRect()
         this.subLeft = panelRect.right
         this.subTop = itemRect.top
+      },
+      updateSubTreePos() {
+        if (!this.isActive || !this.item.children || !this.item.children.length) return
+        this.updateSubPos()
+        const childItems = Array.isArray(this.$refs.childItems)
+          ? this.$refs.childItems
+          : [this.$refs.childItems]
+        childItems.filter(Boolean).forEach((item) => item.updateSubTreePos())
       },
       handleClick() {
         if (this.item.disabled) return

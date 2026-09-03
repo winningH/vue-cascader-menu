@@ -13,6 +13,8 @@
       <drop-menu-item
         v-for="item in data"
         :key="item.value"
+        ref="rootItems"
+        ref-in-for
         :item="item"
         :level="0"
         :path="[]"
@@ -71,6 +73,22 @@
         panel.style.left = this.panelLeft + 'px'
         panel.style.top = this.panelTop + 'px'
       },
+      updateMenuPositions() {
+        if (!this.visible) return
+        this.updatePanelPos()
+        const rootItems = Array.isArray(this.$refs.rootItems)
+          ? this.$refs.rootItems
+          : [this.$refs.rootItems]
+        rootItems.filter(Boolean).forEach((item) => item.updateSubTreePos())
+      },
+      addPositionListeners() {
+        document.addEventListener('scroll', this.updateMenuPositions, true)
+        window.addEventListener('resize', this.updateMenuPositions)
+      },
+      removePositionListeners() {
+        document.removeEventListener('scroll', this.updateMenuPositions, true)
+        window.removeEventListener('resize', this.updateMenuPositions)
+      },
       appendPanelToBody() {
         const panel = this.$refs.panel
         if (!panel || panel.parentNode === document.body) {
@@ -93,10 +111,12 @@
       open() {
         setActive(this) // 互斥：触发其他展开的实例 close
         this.visible = true
+        this.addPositionListeners()
         this.$nextTick(this.appendPanelToBody)
       },
       close() {
         this.visible = false
+        this.removePositionListeners()
         this.$nextTick(this.removePanelFromBody)
         // 清空展开路径即可，子项的 isActive 随之变 false，无需逐个通知子组件
         this.expandedPath = []
@@ -127,6 +147,7 @@
       }
     },
     beforeDestroy() {
+      this.removePositionListeners()
       this.removePanelFromBody()
       clearActive(this)
     }
