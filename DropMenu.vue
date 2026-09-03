@@ -4,30 +4,31 @@
       <span class="dm-trigger-text">{{ title }}</span>
       <span class="dm-trigger-arrow" :class="{ up: visible }">▾</span>
     </button>
-    <div
-      v-show="visible"
-      ref="panel"
-      class="dm-panel"
-      :style="{ '--maxHeight': maxHeight + 'px', left: panelLeft + 'px', top: panelTop + 'px' }"
-    >
-      <drop-menu-item
-        v-for="item in data"
-        :key="item.value"
-        ref="rootItems"
-        ref-in-for
-        :item="item"
-        :level="0"
-        :path="[]"
-        :expanded-path="expandedPath"
-        @select="onSelect"
-        @expand="onExpand"
+    <div v-show="visible" ref="panel" class="dm-panels">
+      <div
+        v-for="panel in panels"
+        :key="panel.key"
+        class="dm-panel"
+        :data-level="panel.level"
+        :style="{ '--maxHeight': maxHeight + 'px' }"
       >
-        <template #label="slotProps">
-          <slot name="label" v-bind="slotProps">
-            {{ slotProps.item.label }}
-          </slot>
-        </template>
-      </drop-menu-item>
+        <drop-menu-item
+          v-for="item in panel.items"
+          :key="item.value"
+          :item="item"
+          :level="panel.level"
+          :path="panel.path"
+          :expanded-path="expandedPath"
+          @select="onSelect"
+          @expand="onExpand"
+        >
+          <template #label="slotProps">
+            <slot name="label" v-bind="slotProps">
+              {{ slotProps.item.label }}
+            </slot>
+          </template>
+        </drop-menu-item>
+      </div>
     </div>
   </div>
 </template>
@@ -57,36 +58,93 @@
         expandedPath: []
       }
     },
+    computed: {
+      panels() {
+        const result = [{ key: 'root', level: 0, path: [], items: this.data }]
+        let items = this.data
+        const path = []
+
+        this.expandedPath.forEach((value, level) => {
+          const item = items.find((candidate) => candidate.value === value)
+          if (!item || !item.children || !item.children.length) return
+          path.push(item)
+          items = item.children
+          result.push({
+            key: path.map((node) => node.value).join('|'),
+            level: level + 1,
+            path: [...path],
+            items
+          })
+        })
+        return result
+      }
+    },
+    watch: {
+      expandedPath() {
+        if (this.visible) this.$nextTick(this.updateMenuPositions)
+      },
+      data: {
+        deep: true,
+        handler() {
+          if (this.visible) {
+            this.$nextTick(() => this.$nextTick(this.updateMenuPositions))
+          }
+        }
+      }
+    },
     mounted() {
       this.$nextTick(() => {
         this.$el._dropMenuPanel = this.$refs.panel
       })
     },
+    updated() {
+      if (this.visible) this.updateMenuPositions()
+    },
     methods: {
       updatePanelPos() {
         const trigger = this.$el && this.$el.querySelector('.dm-trigger')
-        const panel = this.$refs.panel
-        if (!trigger || !panel) return
+        if (!trigger) return
         const rect = trigger.getBoundingClientRect()
         this.panelLeft = rect.left
         this.panelTop = rect.bottom + 4
-        panel.style.left = this.panelLeft + 'px'
-        panel.style.top = this.panelTop + 'px'
+        const panel = this.$refs.panel
+        const rootPanel = panel && panel.querySelector('.dm-panel[data-level="0"]')
+        if (rootPanel) {
+          rootPanel.style.left = this.panelLeft + 'px'
+          rootPanel.style.top = this.panelTop + 'px'
+        }
       },
       updateMenuPositions() {
         if (!this.visible) return
+        // 根面板定位已在 updatePanelPos 内完成，这里只处理 level>=1 的横向排布
         this.updatePanelPos()
-        const rootItems = Array.isArray(this.$refs.rootItems)
-          ? this.$refs.rootItems
-          : [this.$refs.rootItems]
-        rootItems.filter(Boolean).forEach((item) => item.updateSubTreePos())
+        const panel = this.$refs.panel
+        if (!panel) return
+
+        for (let level = 1; level < this.panels.length; level += 1) {
+          const previousPanel = panel.querySelector(
+            `.dm-panel[data-level='${level - 1}']`
+          )
+          if (!previousPanel) continue
+          const panelRect = previousPanel.getBoundingClientRect()
+          const currentPanel = panel.querySelector(
+            `.dm-panel[data-level='${level}']`
+          )
+          if (!currentPanel) continue
+          currentPanel.style.left = panelRect.right + 'px'
+          currentPanel.style.top = this.panelTop + 'px'
+        }
+      },
+      handleScroll(event) {
+        if (event.target && event.target.closest && event.target.closest('.dm-panel')) return
+        this.updateMenuPositions()
       },
       addPositionListeners() {
-        document.addEventListener('scroll', this.updateMenuPositions, true)
+        document.addEventListener('scroll', this.handleScroll, true)
         window.addEventListener('resize', this.updateMenuPositions)
       },
       removePositionListeners() {
-        document.removeEventListener('scroll', this.updateMenuPositions, true)
+        document.removeEventListener('scroll', this.handleScroll, true)
         window.removeEventListener('resize', this.updateMenuPositions)
       },
       appendPanelToBody() {
@@ -198,15 +256,35 @@
     left: 0;
     top: 0;
     min-width: 160px;
-    max-height: var(--maxHeight, 300px);
+    width: max-content;
+    flex: 0 0 auto;
+    height: var(--maxHeight, 300px);
+    box-sizing: border-box;
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-gutter: auto;
     padding: 4px 0;
     background: #fff;
     border: 1px solid var(--color-border, #e5e7eb);
-    border-radius: 8px;
+    /* 多列并排时边框合并为一根（后续列左移 1px 压在前列边框上），仅首末列保留外侧圆角 */
+    border-radius: 0;
+    margin-left: -1px;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
     z-index: 100;
+  }
+
+  .dm-panel:first-child {
+    margin-left: 0;
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+  }
+
+  .dm-panel:last-child {
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+  }
+
+  .dm-panels {
+    position: static;
   }
 </style>

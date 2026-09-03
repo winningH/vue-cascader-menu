@@ -30,6 +30,10 @@ function getPanel() {
   return document.body.querySelector('.dm-panel')
 }
 
+function getPanelAtLevel(level) {
+  return document.body.querySelector(`.dm-panel[data-level="${level}"]`)
+}
+
 // 按 .dm-label 精确匹配节点
 // 注意：本环境 findAll 返回的 WrapperArray 不是真数组，这里用原生 querySelectorAll + createWrapper 保证可靠
 function findItem(wrapper, value) {
@@ -119,16 +123,51 @@ describe('DropMenu', () => {
     await wrapper.vm.$nextTick()
 
     // 子菜单自动出现且包含新数据
-    const sub = findItem(wrapper, 'x').element.parentElement.querySelector('.dm-sub')
-    expect(sub.style.display).not.toBe('none')
+    const sub = getPanelAtLevel(1)
+    expect(sub).toBeTruthy()
     expect(sub.textContent).toContain('xleaf')
+  })
+
+  it('异步子级首次渲染时即使用正确定位', async () => {
+    await openMenu(wrapper)
+    await clickItem(wrapper, 'x')
+
+    const rootPanel = getPanelAtLevel(0)
+    const xItem = findItem(wrapper, 'x').element
+    rootPanel.getBoundingClientRect = () => ({ right: 180 })
+    xItem.getBoundingClientRect = () => ({ top: 96 })
+
+    const node = wrapper.emitted('select')[0][0].path[0]
+    wrapper.vm.$set(node, 'children', [{ label: 'xleaf', value: 'xleaf', hasChildren: false }])
+    await wrapper.vm.$nextTick()
+
+    const sub = getPanelAtLevel(1)
+    expect(sub.style.left).toBe('180px')
+    expect(sub.style.top).toBe('4px')
+  })
+
+  it('父级面板内部滚动时不重新移动子级面板', async () => {
+    await openMenu(wrapper)
+    await clickItem(wrapper, 'a')
+    await wrapper.vm.$nextTick()
+
+    const rootPanel = getPanelAtLevel(0)
+    const subPanel = getPanelAtLevel(1)
+    const initialLeft = subPanel.style.left
+    const initialTop = subPanel.style.top
+
+    rootPanel.dispatchEvent(new Event('scroll', { bubbles: false }))
+    await wrapper.vm.$nextTick()
+
+    expect(subPanel.style.left).toBe(initialLeft)
+    expect(subPanel.style.top).toBe(initialTop)
   })
 
   it('面板挂载于 body，且子菜单仍归属于根菜单节点树', async () => {
     await openMenu(wrapper)
     const panel = getPanel()
     expect(panel).toBeTruthy()
-    expect(panel.parentElement).toBe(document.body)
+    expect(panel.parentElement.parentElement).toBe(document.body)
     const firstItem = panel.querySelector('.dm-item')
     expect(firstItem).toBeTruthy()
     expect(firstItem.closest('.dm-panel')).toBe(panel)
@@ -158,9 +197,41 @@ describe('DropMenu', () => {
 
     expect(getPanel().style.left).toBe('30px')
     expect(getPanel().style.top).toBe('84px')
-    const sub = rootItem.closest('.dm-item-wrap').querySelector('.dm-sub')
+    const sub = getPanelAtLevel(1)
     expect(sub.style.left).toBe('190px')
-    expect(sub.style.top).toBe('95px')
+    expect(sub.style.top).toBe('84px')
+  })
+
+  it('窗口尺寸变化时按新的触发器位置重新定位级联面板', async () => {
+    const triggerRect = { left: 20, bottom: 60 }
+    const rootItemRect = { top: 70 }
+    const panelRect = { right: 180 }
+    const trigger = wrapper.find('.dm-trigger').element
+    trigger.getBoundingClientRect = () => triggerRect
+
+    await openMenu(wrapper)
+    await clickItem(wrapper, 'a')
+    await wrapper.vm.$nextTick()
+
+    const rootItem = findItem(wrapper, 'a').element
+    rootItem.getBoundingClientRect = () => rootItemRect
+    getPanelAtLevel(0).getBoundingClientRect = () => panelRect
+    triggerRect.left = 45
+    triggerRect.bottom = 100
+    rootItemRect.top = 115
+    panelRect.right = 215
+
+    window.dispatchEvent(new Event('resize'))
+    await wrapper.vm.$nextTick()
+
+    expect(getPanelAtLevel(0).style.left).toBe('45px')
+    expect(getPanelAtLevel(0).style.top).toBe('104px')
+    expect(getPanelAtLevel(1).style.left).toBe('215px')
+    expect(getPanelAtLevel(1).style.top).toBe('104px')
+    // 列高统一：各级面板的 --maxHeight 自定义属性一致（height 由样式表按该变量渲染）
+    const rootMaxHeight = getPanelAtLevel(0).style.getPropertyValue('--maxHeight')
+    expect(rootMaxHeight).toBe('300px')
+    expect(getPanelAtLevel(1).style.getPropertyValue('--maxHeight')).toBe(rootMaxHeight)
   })
 
   it('逐级展开：祖先保持激活（isActive 前缀语义，回归用例）', async () => {
@@ -170,13 +241,9 @@ describe('DropMenu', () => {
     await clickItem(wrapper, 'c') // 展开三级（待加载）
 
     expect(wrapper.vm.expandedPath).toEqual(['a', 'b', 'c'])
-    // 一、二级子菜单都必须保持可见（此前等长比较 bug 的回归点）
-    const aWrap = findItem(wrapper, 'a').element.closest('.dm-item-wrap')
-    const bWrap = findItem(wrapper, 'b').element.closest('.dm-item-wrap')
-    const aSub = aWrap.querySelector('.dm-sub')
-    const bSub = bWrap.querySelector('.dm-sub')
-    expect(aSub.style.display).not.toBe('none')
-    expect(bSub.style.display).not.toBe('none')
+    // 一、二级面板都必须保持可见（此前等长比较 bug 的回归点）
+    expect(getPanelAtLevel(1)).toBeTruthy()
+    expect(getPanelAtLevel(2)).toBeTruthy()
     // 高亮保持
     expect(findItem(wrapper, 'a').classes()).toContain('active')
     expect(findItem(wrapper, 'b').classes()).toContain('active')
@@ -221,10 +288,9 @@ describe('DropMenu', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.vm.expandedPath).toEqual(['a', 'b2'])
-    // 新树中 a 的子菜单保持展开，b2 出现在其中
-    const aWrap = findItem(wrapper, 'a').element.closest('.dm-item-wrap')
-    const aSub = aWrap.querySelector('.dm-sub')
-    expect(aSub.style.display).not.toBe('none')
+    // 新树中 a 的二级面板保持展开，b2 出现在其中
+    const aSub = getPanelAtLevel(1)
+    expect(aSub).toBeTruthy()
     expect(aSub.textContent).toContain('b2')
   })
 
@@ -270,7 +336,7 @@ describe('DropMenu', () => {
     expect(findItem(wrapper, 'p1').classes()).toContain('active')
     expect(findItem(wrapper, 'p2').classes()).not.toContain('active')
     expect(findItem(wrapper, 'dup').classes()).toContain('active')
-    expect(findItem(wrapper, 'dup2').classes()).not.toContain('active')
+    expect(findItem(wrapper, 'dup2')).toBeUndefined()
   })
 })
 

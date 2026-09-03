@@ -16,30 +16,6 @@
         <span v-else-if="item.hasChildren" class="dm-arrow">▸</span>
       </span>
     </div>
-    <div
-      v-show="isActive && item.children && item.children.length"
-      class="dm-sub"
-      :style="subStyle"
-    >
-      <drop-menu-item
-        v-for="c in item.children"
-        :key="c.value"
-        ref="childItems"
-        ref-in-for
-        :item="c"
-        :level="level + 1"
-        :path="[...path, item]"
-        :expanded-path="expandedPath"
-        @select="$emit('select', $event)"
-        @expand="$emit('expand', $event)"
-      >
-        <template #label="slotProps">
-          <slot name="label" v-bind="slotProps">
-            {{ slotProps.item.label }}
-          </slot>
-        </template>
-      </drop-menu-item>
-    </div>
   </div>
 </template>
 
@@ -47,7 +23,7 @@
   import LoadingIcon from './LoadingIcon.vue'
 
   export default {
-    name: 'DropMenuItem', // 递归组件必须声明 name 才能自引用
+    name: 'DropMenuItem',
     components: { LoadingIcon },
     props: {
       item: { type: Object, required: true },
@@ -56,13 +32,6 @@
       path: { type: Array, default: () => [] },
       // 当前展开路径（根到展开节点的 value 链数组），由 DropMenu 持有、逐层透传
       expandedPath: { type: Array, default: () => [] }
-    },
-    data() {
-      return {
-        // .dm-sub 用 fixed 定位，left/top 由 JS 根据 .dm-item 的 rect 计算
-        subLeft: 0,
-        subTop: 0
-      }
     },
     computed: {
       // 展开状态按 value 链（根到自身的 value 数组）比对，不比对象引用：
@@ -79,53 +48,8 @@
       loading() {
         return this.item.loading === true
       },
-      subStyle() {
-        return {
-          left: this.subLeft + 'px',
-          top: this.subTop + 'px'
-        }
-      }
-    },
-    watch: {
-      // 被激活时（isActive 从 false→true）重算 fixed 坐标
-      // 失活无需任何清理：展开状态由根的 expandedPath 单点持有，收起/切换时自然覆盖
-      isActive(v) {
-        if (v && this.item.children && this.item.children.length) {
-          this.$nextTick(this.updateSubPos)
-        }
-      },
-      // 异步加载完成（children 从空变非空）→ 若当前激活重算坐标
-      // loading 复位由外部控制（外部塞 children 时自己设 item.loading=false）
-      'item.children'(v) {
-        if (v && v.length && this.isActive) {
-          this.$nextTick(this.updateSubPos)
-        }
-      }
     },
     methods: {
-      // 根据父级面板的 rect 计算 .dm-sub 的 fixed 坐标：弹出在父级面板外面右侧
-      // 关键：用父级 .dm-sub/.dm-panel 的 right，不是父项 .dm-item 的 right
-      //   - 父级无滚动条：panel.right ≈ item.right，紧贴 panel 右边外侧
-      //   - 父级有滚动条：panel.right > item.right（在滚动条外侧），子菜单 z-index:100 覆盖滚动条上方
-      //   - ElementUI Cascader 风格：子菜单紧贴父级面板边框外侧，不在面板内部
-      // fixed 不受任何祖先 overflow 裁剪，规避级联菜单深层被裁剪问题
-      updateSubPos() {
-        const itemEl = this.$refs.item
-        if (!itemEl) return
-        const itemRect = itemEl.getBoundingClientRect()
-        // this.$el = .dm-item-wrap，parentElement = 父级 .dm-sub（非顶层）或 .dm-panel（顶层）
-        const panelRect = this.$el.parentElement.getBoundingClientRect()
-        this.subLeft = panelRect.right
-        this.subTop = itemRect.top
-      },
-      updateSubTreePos() {
-        if (!this.isActive || !this.item.children || !this.item.children.length) return
-        this.updateSubPos()
-        const childItems = Array.isArray(this.$refs.childItems)
-          ? this.$refs.childItems
-          : [this.$refs.childItems]
-        childItems.filter(Boolean).forEach((item) => item.updateSubTreePos())
-      },
       handleClick() {
         if (this.item.disabled) return
 
@@ -162,10 +86,6 @@
 </script>
 
 <style scoped>
-  .dm-item-wrap {
-    position: relative;
-  }
-
   .dm-item {
     display: flex;
     align-items: center;
@@ -173,8 +93,6 @@
     gap: 12px;
     padding: 8px 16px;
     cursor: pointer;
-    white-space: nowrap;
-    transition: background 0.15s;
   }
 
   .dm-item:hover {
@@ -198,6 +116,8 @@
 
   .dm-label {
     flex: 1;
+    white-space: nowrap;
+    word-break: normal;
   }
 
   /* 右侧图标容器：固定宽高 + 裁剪溢出。旋转的 svg loading 图标绘制区域一旦扫出
@@ -235,25 +155,4 @@
     }
   }
 
-  /* 子级菜单：position:fixed 规避祖先 overflow 裁剪（级联深层不被父级 .dm-sub 裁剪）
-     left/top 由 JS updateSubPos 根据 .dm-item 的 rect 计算（右侧弹出，顶部对齐）
-     transform:none 防御性覆盖——若祖先链有 transform 会让 fixed 失效变相对定位 */
-  .dm-sub {
-    position: fixed;
-    /* left/top 由 :style 绑定 */
-    /* --maxHeight 由顶层 .dm-panel 的内联样式设置，自定义属性沿 DOM 继承到各层 .dm-sub */
-    max-height: var(--maxHeight, 300px);
-    overflow-y: auto;
-    overflow-x: hidden;
-    /* 滚动条空间：内容超出时预留（auto），避免项数少时空滚动条占位挤压内容 */
-    scrollbar-gutter: auto;
-    transform: none;
-    min-width: 140px;
-    padding: 4px 0;
-    background: #fff;
-    border: 1px solid var(--color-border, #e5e7eb);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-    z-index: 100;
-  }
 </style>
